@@ -2,8 +2,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlanetData, Encounter } from "../types";
 
-// Always use named parameter for apiKey and use process.env.API_KEY directly.
+// Gemini API 초기화
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// JSON 응답 내 마크다운 코드 블록 제거용 헬퍼
+const parseSafeJson = (text: string | undefined) => {
+  if (!text) return null;
+  const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+  try {
+    return JSON.parse(cleanText);
+  } catch (e) {
+    console.error("JSON 파싱 실패:", e, "원본 텍스트:", text);
+    return null;
+  }
+};
 
 const planetSchema = {
   type: Type.ARRAY,
@@ -77,30 +89,36 @@ const encounterSchema = {
 };
 
 function generateImage(seed: string): string {
-  // AI 이미지 대신 Picsum 사용 (사용자 요청 롤백 사항)
   return `https://picsum.photos/seed/${seed}/1600/900`;
 }
 
-export async function generateEncounterData(): Promise<Encounter> {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `외계 동식물 형태의 존재와의 비언어적 조우 이벤트를 생성하라. 
-    대화는 불가능하며 소리와 몸짓으로만 반응한다. 인간형/기계형 절대 금지. 
-    '탐사자' 용어를 사용할 것. 최소 8단계 이상의 깊이를 가질 것.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: encounterSchema,
-    }
-  });
-  // Use .text property directly and trim for safety.
-  const data = JSON.parse(response.text?.trim() || "{}");
-  return {
-    ...data,
-    currentStepId: data.steps?.[0]?.id || "",
-    history: [],
-    isCompleted: false
-  };
+export async function generateEncounterData(): Promise<Encounter | null> {
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `외계 동식물 형태의 존재와의 비언어적 조우 이벤트를 생성하라. 
+      대화는 불가능하며 소리와 몸짓으로만 반응한다. 인간형/기계형 절대 금지. 
+      '탐사자' 용어를 사용할 것. 최소 8단계 이상의 깊이를 가질 것.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: encounterSchema,
+      }
+    });
+    
+    const data = parseSafeJson(response.text);
+    if (!data) return null;
+
+    return {
+      ...data,
+      currentStepId: data.steps?.[0]?.id || "",
+      history: [],
+      isCompleted: false
+    };
+  } catch (error) {
+    console.error("조우 데이터 생성 실패:", error);
+    return null;
+  }
 }
 
 export async function generateRandomPlanets(count: number): Promise<PlanetData[]> {
@@ -118,8 +136,9 @@ export async function generateRandomPlanets(count: number): Promise<PlanetData[]
       },
     });
 
-    // Use .text property directly and trim for safety.
-    const rawPlanets = JSON.parse(response.text?.trim() || "[]");
+    const rawPlanets = parseSafeJson(response.text);
+    if (!rawPlanets || !Array.isArray(rawPlanets)) return [];
+
     const finalPlanets: PlanetData[] = [];
 
     for (const p of rawPlanets) {
@@ -141,7 +160,7 @@ export async function generateRandomPlanets(count: number): Promise<PlanetData[]
 
     return finalPlanets;
   } catch (error) {
-    console.error("Planet generation failed:", error);
+    console.error("행성 데이터 생성 실패:", error);
     return [];
   }
 }

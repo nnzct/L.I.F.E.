@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<ExplorationLog[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('시스템 스캔 중...');
   const [discoveredNodes, setDiscoveredNodes] = useState<string[]>([]);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
   const [localLog, setLocalLog] = useState('');
@@ -77,7 +78,7 @@ const App: React.FC = () => {
         setIsDBReady(true);
       } catch (e) {
         console.error("Initialization failed:", e);
-        setIsDBReady(true); // 에러가 나도 화면은 띄움
+        setIsDBReady(true);
       }
     };
     init();
@@ -105,31 +106,37 @@ const App: React.FC = () => {
   };
 
   const startExploration = async () => {
+    if (isLoading) return;
     setIsLoading(true);
+    setLoadingMsg('성계 지도 분석 중...');
+    
     try {
       const newOnes = await generateRandomPlanets(1);
-      await persistPlanets([...planets, ...newOnes]);
+      if (newOnes && newOnes.length > 0) {
+        setLoadingMsg('데이터 아카이빙 중...');
+        await persistPlanets([...planets, ...newOnes]);
+      } else {
+        alert('신규 성계 데이터를 수신하지 못했습니다. 통신 상태를 확인하십시오.');
+      }
     } catch (err) {
       console.error(err);
+      alert('스캔 도중 치명적인 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fix: Added toggleVisibility function to handle planet visibility in admin mode (Error in line 244)
   const toggleVisibility = async (id: string) => {
     const updated = planets.map(p => p.id === id ? { ...p, isVisible: !p.isVisible } : p);
     await persistPlanets(updated);
   };
 
-  // Fix: Added deletePlanet function to handle planet deletion in admin mode (Error in line 247)
   const deletePlanet = async (id: string) => {
     if (!confirm('해당 행성 데이터를 영구 삭제하시겠습니까?')) return;
     const updated = planets.filter(p => p.id !== id);
     await persistPlanets(updated);
   };
 
-  // 모든 스테이지에서 조우 발생 로직 (20% 확률)
   useEffect(() => {
     if (selectedPlanet && view === 'planet') {
       const sector = selectedPlanet.sectors[currentSectorIdx];
@@ -142,11 +149,11 @@ const App: React.FC = () => {
       const hasEncounterOnPlanet = selectedPlanet.sectors.some(s => !!s.encounter);
       const isLastSector = currentSectorIdx === selectedPlanet.sectors.length - 1;
 
-      // 20% 확률 또는 마지막 구역인데 아직 조우가 없었던 경우 확정 발생
       if (Math.random() <= 0.20 || (!hasEncounterOnPlanet && isLastSector)) {
         const fetchEnc = async () => {
           try {
             const enc = await generateEncounterData();
+            if (!enc) return;
             const updatedSectors = [...selectedPlanet.sectors];
             updatedSectors[currentSectorIdx].encounter = enc;
             const updatedPlanet = { ...selectedPlanet, sectors: updatedSectors };
@@ -231,8 +238,8 @@ const App: React.FC = () => {
         </div>
         <div className="flex gap-4">
           {isAdmin && (
-            <button onClick={startExploration} disabled={isLoading} className="px-8 py-4 bg-brand-orangeDark border-2 border-brand-orange text-white rounded-2xl hover:bg-brand-orange transition-all flex items-center gap-3 font-black text-[10px] tracking-[0.2em] shadow-lg">
-              {isLoading ? <RotateCw className="w-4 h-4 animate-spin" /> : '신규 구역 스캔'}
+            <button onClick={startExploration} disabled={isLoading} className="px-8 py-4 bg-brand-orangeDark border-2 border-brand-orange text-white rounded-2xl hover:bg-brand-orange transition-all flex items-center gap-3 font-black text-[10px] tracking-[0.2em] shadow-lg disabled:opacity-50">
+              {isLoading ? <><RotateCw className="w-4 h-4 animate-spin" /> {loadingMsg}</> : '신규 구역 스캔'}
             </button>
           )}
           <button onClick={() => setView('logs')} className="flex items-center gap-3 bg-brand-greenDark border-2 border-brand-green/20 text-brand-light px-10 py-4 rounded-2xl font-black text-[10px] tracking-[0.2em] uppercase">
@@ -242,6 +249,11 @@ const App: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+        {planets.filter(p => p.isVisible || isAdmin).length === 0 && !isLoading && (
+          <div className="col-span-full py-20 bg-brand-darkSecondary/30 border-2 border-dashed border-brand-greenMuted/20 rounded-[3rem] text-center">
+            <p className="text-brand-gray/50 uppercase tracking-[0.4em] font-black italic">No Sectors Discovered Yet</p>
+          </div>
+        )}
         {planets.filter(p => p.isVisible || isAdmin).map((planet) => (
           <div key={planet.id} onClick={() => { setSelectedPlanet(planet); setCurrentSectorIdx(0); setView('planet'); setDiscoveredNodes([]); setActiveEncounter(null); }} className={`group cursor-pointer relative bg-brand-darkSecondary border-2 rounded-[3.5rem] overflow-hidden transition-all duration-700 hover:scale-[1.03] card-glow ${planet.isVisible ? 'border-brand-greenMuted/10' : 'border-brand-orange/40 opacity-50'}`}>
             <div className="h-80 overflow-hidden relative">
