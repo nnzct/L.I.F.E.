@@ -13,7 +13,6 @@ import {
 
 const ADMIN_CREDENTIALS = { id: 'escape.eta.00@gmail.com', pw: 'didEl!2003' };
 
-// 최적화된 입력 필드: 타이핑 시 부모를 리렌더링하지 않음
 const FastInput = memo(({ initialValue, placeholder, className, type = "text", onEnter, onValueChange }: any) => {
   const [localValue, setLocalValue] = useState(initialValue || '');
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,7 +70,7 @@ const App: React.FC = () => {
         if (savedAdmin === 'true') setIsAdmin(true);
         setIsDBReady(true);
       } catch (e) {
-        console.error("Initialization failed:", e);
+        console.error("L.I.F.E. System Init Error:", e);
         setIsDBReady(true);
       }
     };
@@ -83,7 +82,7 @@ const App: React.FC = () => {
     try {
       await savePlanetsToDB(data);
     } catch (e) {
-      console.error("DB Save failed:", e);
+      console.error("IndexedDB Sync Error:", e);
     }
   };
 
@@ -101,21 +100,24 @@ const App: React.FC = () => {
     if (isLoading) return;
     setIsLoading(true);
     setLoadingMsg('성계 심층 스캔 시작 (Gemini-3 Pro)...');
+    
+    console.log("Starting Planet Exploration Scan...");
+    
     try {
-      await new Promise(r => setTimeout(r, 1000));
-      setLoadingMsg('미개척 행성 구조 분석 중...');
       const newOnes = await generateRandomPlanets(1);
       
       if (newOnes && newOnes.length > 0) {
         setLoadingMsg('로컬 데이터베이스 동기화 중...');
         const updated = [...planets, ...newOnes];
         await persistPlanets(updated);
+        console.log("Scan Successful: New Planet Found", newOnes[0].name);
       } else {
-        alert('신규 성계 데이터를 수신하지 못했습니다. 통신 대역폭 또는 API 설정을 확인하십시오.');
+        console.warn("Scan Failed: AI did not return planet data.");
+        alert('신규 성계 데이터를 수신하지 못했습니다. API 할당량이 부족하거나 네트워크 지연이 발생했을 수 있습니다.');
       }
     } catch (err) {
-      console.error("Scan error:", err);
-      alert('치명적인 분석 오류가 발생했습니다.');
+      console.error("Critical Scan Failure:", err);
+      alert(`치명적인 분석 오류가 발생했습니다. (에러내용: ${err instanceof Error ? err.message : 'Unknown'})`);
     } finally {
       setIsLoading(false);
     }
@@ -159,7 +161,7 @@ const App: React.FC = () => {
             const updatedPlanet = { ...selectedPlanet, sectors: updatedSectors };
             setSelectedPlanet(updatedPlanet);
             persistPlanets(planets.map(p => p.id === updatedPlanet.id ? updatedPlanet : p));
-          } catch (e) { console.error(e); }
+          } catch (e) { console.error("Encounter generation failure:", e); }
         })();
       }
     }
@@ -196,8 +198,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  // --- 스크린 렌더링 ---
 
   const NicknameScreen = () => (
     <div className="flex flex-col items-center justify-center min-h-screen relative z-10 px-4">
@@ -487,7 +487,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex gap-4 mt-10">
           <button onClick={() => setView('nickname')} className="flex-1 bg-brand-greenDark/40 text-brand-lightMuted font-black py-4 rounded-2xl">취소</button>
-          <button onClick={handleAdminLogin} className="flex-1 bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-4 rounded-2xl">승인</button>
+          <button onClick={handleAdminLogin} className="flex-1 bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-4 rounded-2xl shadow-lg">승인</button>
         </div>
       </div>
     </div>
