@@ -6,12 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>L.I.F.E. - Laboratory for Interstellar Frontier Exploration</title>
     <script>
-      // 브라우저에서 process.env 참조 에러 방지를 위한 필수 Shim
-      window.process = {
-        env: {
-          API_KEY: "" 
-        }
-      };
+      // Defensive shim for process.env
+      if (typeof window.process === 'undefined') {
+        window.process = { env: {} };
+      } else if (typeof window.process.env === 'undefined') {
+        window.process.env = {};
+      }
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">

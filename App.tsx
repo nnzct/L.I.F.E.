@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { ViewState, PlanetData, ExplorationLog, Sector, Encounter, EncounterStep } from './types';
 import { generateRandomPlanets, generateEncounterData } from './services/geminiService';
 import { savePlanetsToDB, getPlanetsFromDB } from './storage';
@@ -13,28 +13,45 @@ import {
 
 const ADMIN_CREDENTIALS = { id: 'escape.eta.00@gmail.com', pw: 'didEl!2003' };
 
-const OptimizedInput = memo(({ value, onChange, placeholder, className, type = "text", onKeyDown }: any) => {
-  const [local, setLocal] = useState(value);
-  useEffect(() => setLocal(value), [value]);
+// 최적화된 입력 필드: 타이핑 시 부모를 리렌더링하지 않음
+const FastInput = memo(({ initialValue, placeholder, className, type = "text", onEnter, onValueChange }: any) => {
+  const [localValue, setLocalValue] = useState(initialValue || '');
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(e.target.value);
+    if (onValueChange) onValueChange(e.target.value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && onEnter) {
+      onEnter(localValue);
+    }
+  };
+
   return (
     <input
       type={type}
-      value={local}
-      onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
+      value={localValue}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
       placeholder={placeholder}
       className={className}
-      onKeyDown={onKeyDown}
     />
   );
 });
 
-const OptimizedTextArea = memo(({ value, onChange, placeholder, className }: any) => {
-  const [local, setLocal] = useState(value);
-  useEffect(() => setLocal(value), [value]);
+const FastTextArea = memo(({ initialValue, placeholder, className, onValueChange }: any) => {
+  const [localValue, setLocalValue] = useState(initialValue || '');
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setLocalValue(e.target.value);
+    if (onValueChange) onValueChange(e.target.value);
+  };
+
   return (
     <textarea
-      value={local}
-      onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
+      value={localValue}
+      onChange={handleChange}
       placeholder={placeholder}
       className={className}
     />
@@ -53,11 +70,13 @@ const App: React.FC = () => {
   const [loadingMsg, setLoadingMsg] = useState('시스템 스캔 중...');
   const [discoveredNodes, setDiscoveredNodes] = useState<string[]>([]);
   const [activeEncounter, setActiveEncounter] = useState<Encounter | null>(null);
-  const [localLog, setLocalLog] = useState('');
   const [isDBReady, setIsDBReady] = useState(false);
 
-  const [adminId, setAdminId] = useState('');
-  const [adminPw, setAdminPw] = useState('');
+  // 입력값 임시 저장용 Ref (리렌더링 유발 방지)
+  const tempNickname = useRef('');
+  const tempLog = useRef('');
+  const adminIdRef = useRef('');
+  const adminPwRef = useRef('');
 
   useEffect(() => {
     const init = async () => {
@@ -94,12 +113,10 @@ const App: React.FC = () => {
   };
 
   const handleAdminLogin = () => {
-    if (adminId === ADMIN_CREDENTIALS.id && adminPw === ADMIN_CREDENTIALS.pw) {
+    if (adminIdRef.current === ADMIN_CREDENTIALS.id && adminPwRef.current === ADMIN_CREDENTIALS.pw) {
       setIsAdmin(true);
       localStorage.setItem('life-admin', 'true');
       setView('galaxy');
-      setAdminId('');
-      setAdminPw('');
     } else {
       alert('인증 정보가 올바르지 않습니다.');
     }
@@ -109,20 +126,21 @@ const App: React.FC = () => {
     if (isLoading) return;
     setIsLoading(true);
     setLoadingMsg('성계 지도 분석 중...');
-    
     try {
+      await new Promise(r => setTimeout(r, 500));
       const newOnes = await generateRandomPlanets(1);
       if (newOnes && newOnes.length > 0) {
         setLoadingMsg('데이터 아카이빙 중...');
         await persistPlanets([...planets, ...newOnes]);
       } else {
-        alert('신규 성계 데이터를 수신하지 못했습니다. 통신 상태를 확인하십시오.');
+        alert('신규 성계 데이터를 수신하지 못했습니다.');
       }
     } catch (err) {
       console.error(err);
-      alert('스캔 도중 치명적인 오류가 발생했습니다.');
+      alert('스캔 도중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
+      setLoadingMsg('시스템 스캔 중...');
     }
   };
 
@@ -140,17 +158,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (selectedPlanet && view === 'planet') {
       const sector = selectedPlanet.sectors[currentSectorIdx];
+      if (!sector) return;
       const rollKey = `roll-${selectedPlanet.id}-${currentSectorIdx}`;
-      
       if (sector.encounter || sessionStorage.getItem(rollKey)) return;
-
       sessionStorage.setItem(rollKey, 'true');
-
       const hasEncounterOnPlanet = selectedPlanet.sectors.some(s => !!s.encounter);
       const isLastSector = currentSectorIdx === selectedPlanet.sectors.length - 1;
-
       if (Math.random() <= 0.20 || (!hasEncounterOnPlanet && isLastSector)) {
-        const fetchEnc = async () => {
+        (async () => {
           try {
             const enc = await generateEncounterData();
             if (!enc) return;
@@ -160,10 +175,9 @@ const App: React.FC = () => {
             setSelectedPlanet(updatedPlanet);
             persistPlanets(planets.map(p => p.id === updatedPlanet.id ? updatedPlanet : p));
           } catch (e) {
-            console.error("Encounter generation failed", e);
+            console.error(e);
           }
-        };
-        fetchEnc();
+        })();
       }
     }
   }, [currentSectorIdx, selectedPlanet, view, planets]);
@@ -171,19 +185,14 @@ const App: React.FC = () => {
   const handleChoice = (choice: any) => {
     if (!activeEncounter || !selectedPlanet) return;
     const nextStepId = choice.nextStepId;
-    const isEnd = nextStepId === null;
-
     const newHistory = [...activeEncounter.history, { choice: choice.text, response: choice.finalResponse }];
-    
     const updatedEnc: Encounter = {
       ...activeEncounter,
       history: newHistory,
       currentStepId: nextStepId || activeEncounter.currentStepId,
-      isCompleted: isEnd
+      isCompleted: nextStepId === null
     };
-
     setActiveEncounter(updatedEnc);
-
     const updatedSectors = [...selectedPlanet.sectors];
     updatedSectors[currentSectorIdx].encounter = updatedEnc;
     const updatedPlanet = { ...selectedPlanet, sectors: updatedSectors };
@@ -205,6 +214,8 @@ const App: React.FC = () => {
     );
   }
 
+  // --- 스크린 렌더링 함수들 ---
+
   const NicknameScreen = () => (
     <div className="flex flex-col items-center justify-center min-h-screen relative z-10 px-4">
       <div className="bg-brand-darkSecondary/95 backdrop-blur-3xl p-12 rounded-[3.5rem] border border-brand-greenMuted/30 shadow-[0_0_120px_rgba(255,54,0,0.1)] max-w-md w-full text-center">
@@ -213,14 +224,13 @@ const App: React.FC = () => {
         </div>
         <h1 className="text-7xl font-black font-orbitron mb-2 text-brand-orange tracking-tighter">L.I.F.E.</h1>
         <p className="text-brand-lightMuted mb-12 text-[10px] font-black tracking-[0.5em] uppercase opacity-80 italic">Life Index For Evaluation</p>
-        <OptimizedInput 
+        <FastInput 
           placeholder="탐사원 코드 입력" 
-          value={nickname}
-          onChange={setNickname}
+          onValueChange={(v: string) => tempNickname.current = v}
+          onEnter={(v: string) => { if(v) { setNickname(v); localStorage.setItem('life-nickname', v); setView('galaxy'); }}}
           className="w-full bg-brand-dark border-2 border-brand-greenMuted/20 rounded-2xl px-6 py-5 mb-6 focus:border-brand-orange outline-none transition-all text-brand-light font-orbitron text-center uppercase tracking-widest text-sm"
-          onKeyDown={(e: any) => e.key === 'Enter' && nickname && (localStorage.setItem('life-nickname', nickname), setView('galaxy'))}
         />
-        <button onClick={() => { if(nickname) { localStorage.setItem('life-nickname', nickname); setView('galaxy'); } }} className="w-full bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-5 rounded-2xl shadow-xl shadow-brand-orange/20 text-xs tracking-[0.3em] uppercase font-orbitron">
+        <button onClick={() => { if(tempNickname.current) { setNickname(tempNickname.current); localStorage.setItem('life-nickname', tempNickname.current); setView('galaxy'); } }} className="w-full bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-5 rounded-2xl shadow-xl shadow-brand-orange/20 text-xs tracking-[0.3em] uppercase font-orbitron">
           시스템 접속
         </button>
       </div>
@@ -257,7 +267,7 @@ const App: React.FC = () => {
         {planets.filter(p => p.isVisible || isAdmin).map((planet) => (
           <div key={planet.id} onClick={() => { setSelectedPlanet(planet); setCurrentSectorIdx(0); setView('planet'); setDiscoveredNodes([]); setActiveEncounter(null); }} className={`group cursor-pointer relative bg-brand-darkSecondary border-2 rounded-[3.5rem] overflow-hidden transition-all duration-700 hover:scale-[1.03] card-glow ${planet.isVisible ? 'border-brand-greenMuted/10' : 'border-brand-orange/40 opacity-50'}`}>
             <div className="h-80 overflow-hidden relative">
-              <img src={planet.sectors[0].imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-[3s]" alt={planet.name} />
+              <img src={planet.sectors[0]?.imageUrl || ''} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-[3s]" alt={planet.name} />
               <div className="absolute inset-0 bg-gradient-to-t from-brand-darkSecondary to-transparent"></div>
               <div className="absolute bottom-10 left-12">
                 <span className="text-brand-orange text-[9px] font-orbitron font-black tracking-[0.4em] mb-2 block">{planet.code}</span>
@@ -283,8 +293,29 @@ const App: React.FC = () => {
   const PlanetDetailView = () => {
     if (!selectedPlanet) return null;
     const sector = selectedPlanet.sectors[currentSectorIdx];
+    if (!sector) return null;
     const encounter = sector.encounter;
     const currentStep = encounter?.steps.find(s => s.id === encounter.currentStepId);
+
+    const handleLogSubmit = () => {
+      if(tempLog.current.trim()){ 
+        const newLog = { 
+          id: Date.now().toString(), 
+          planetId: selectedPlanet.id, 
+          planetName: selectedPlanet.name, 
+          author: nickname, 
+          content: tempLog.current, 
+          timestamp: Date.now(), 
+          isVisible: true 
+        }; 
+        const updated = [newLog, ...logs]; 
+        setLogs(updated); 
+        localStorage.setItem('life-logs', JSON.stringify(updated)); 
+        tempLog.current = '';
+        // UI 강제 업데이트를 위해 작은 트릭 (전체 리렌더링 유발)
+        setNickname(prev => prev); 
+      }
+    };
 
     return (
       <div className="pt-32 pb-24 px-10 max-w-[1600px] mx-auto relative z-10 animate-in fade-in duration-700">
@@ -374,14 +405,14 @@ const App: React.FC = () => {
                <h4 className="text-[10px] font-black text-brand-orange uppercase tracking-widest mb-8 flex items-center gap-4">
                  <Database className="w-5 h-5" /> Planet Log Submission
                </h4>
-               <OptimizedTextArea 
+               <FastTextArea 
+                  key={`textarea-${selectedPlanet.id}`}
                   placeholder="탐사 기록을 남기십시오..."
+                  onValueChange={(v: string) => tempLog.current = v}
                   className="w-full bg-brand-dark border-2 border-brand-greenMuted/10 rounded-[2.5rem] p-6 min-h-[140px] text-brand-light focus:border-brand-orange outline-none mb-6 font-medium text-sm"
-                  value={localLog}
-                  onChange={setLocalLog}
                />
-               <button onClick={() => { if(localLog.trim()){ const newLog = { id: Date.now().toString(), planetId: selectedPlanet.id, planetName: selectedPlanet.name, author: nickname, content: localLog, timestamp: Date.now(), isVisible: true }; const updated = [newLog, ...logs]; setLogs(updated); localStorage.setItem('life-logs', JSON.stringify(updated)); setLocalLog(''); } }} className="w-full bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-4 rounded-[2rem] transition-all shadow-xl shadow-brand-orange/20 text-[11px] tracking-[0.3em] uppercase font-orbitron flex items-center justify-center gap-3">
-                  <Send className="w-5 h-5" /> TRANSMIT DATA
+               <button onClick={handleLogSubmit} className="w-full bg-brand-orange hover:bg-brand-orangeLight text-white font-black py-4 rounded-[2rem] transition-all shadow-xl shadow-brand-orange/20 text-[11px] tracking-[0.3em] uppercase font-orbitron flex items-center justify-center gap-3">
+                  <span className="flex items-center gap-2"><Send className="w-5 h-5" /> TRANSMIT DATA</span>
                </button>
             </div>
 
@@ -472,8 +503,8 @@ const App: React.FC = () => {
       <div className="bg-brand-darkSecondary/95 backdrop-blur-3xl p-12 rounded-[3.5rem] border border-brand-orange/20 shadow-[0_0_100px_rgba(255,54,0,0.15)] max-w-md w-full">
         <h2 className="text-3xl font-black font-orbitron mb-2 text-brand-orange text-center uppercase tracking-widest">Root Auth</h2>
         <div className="space-y-4 mt-10">
-          <OptimizedInput type="email" placeholder="ADMIN ID" value={adminId} onChange={setAdminId} className="w-full bg-brand-dark border-2 border-brand-greenMuted/10 rounded-2xl px-6 py-4 focus:border-brand-orange outline-none text-brand-light" />
-          <OptimizedInput type="password" placeholder="ACCESS KEY" value={adminPw} onChange={setAdminPw} className="w-full bg-brand-dark border-2 border-brand-greenMuted/10 rounded-2xl px-6 py-4 focus:border-brand-orange outline-none text-brand-light" onKeyDown={(e: any) => e.key === 'Enter' && handleAdminLogin()} />
+          <FastInput type="email" placeholder="ADMIN ID" onValueChange={(v: string) => adminIdRef.current = v} className="w-full bg-brand-dark border-2 border-brand-greenMuted/10 rounded-2xl px-6 py-4 focus:border-brand-orange outline-none text-brand-light" />
+          <FastInput type="password" placeholder="ACCESS KEY" onValueChange={(v: string) => adminPwRef.current = v} onEnter={handleAdminLogin} className="w-full bg-brand-dark border-2 border-brand-greenMuted/10 rounded-2xl px-6 py-4 focus:border-brand-orange outline-none text-brand-light" />
         </div>
         <div className="flex gap-4 mt-10">
           <button onClick={() => setView('nickname')} className="flex-1 bg-brand-greenDark/40 text-brand-lightMuted font-black py-4 rounded-2xl">취소</button>
