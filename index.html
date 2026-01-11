@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L.I.F.E. - Laboratory for Interstellar Frontier Exploration</title>
+    <script>
+      // 브라우저에서 process.env 참조 에러 방지를 위한 필수 Shim
+      window.process = {
+        env: {
+          API_KEY: "" 
+        }
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                orange: '#ff3600',
+                orangeDark: '#ce2200',
+                orangeLight: '#ff7243',
+                green: '#4c867a',
+                greenDark: '#102a1d',
+                greenMuted: '#4b5652',
+                dark: '#060706',
+                darkSecondary: '#131715',
+                light: '#edfff8',
+                lightMuted: '#b5bfbb',
+                gray: '#949d99',
+              }
+            },
+            fontFamily: {
+              orbitron: ['Orbitron', 'sans-serif'],
+              noto: ['Noto Sans KR', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #060706;
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #edfff8;
+            overflow-x: hidden;
+        }
+        .scanner-line {
+          height: 2px;
+          background: linear-gradient(90deg, transparent, #ff3600, transparent);
+          box-shadow: 0 0 15px #ff3600;
+          position: absolute;
+          width: 100%;
+          z-index: 10;
+          animation: scan 6s linear infinite;
+        }
+        @keyframes scan {
+          0% { top: 0%; }
+          100% { top: 100%; }
+        }
+        .hotspot-pulse {
+          animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-ring {
+          0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0px rgba(255, 54, 0, 0.7); }
+          70% { transform: scale(1.5); opacity: 0; box-shadow: 0 0 0 15px rgba(255, 54, 0, 0); }
+          100% { transform: scale(1); opacity: 0; box-shadow: 0 0 0 0px rgba(255, 54, 0, 0); }
+        }
+        .alien-gradient {
+          background: radial-gradient(circle at center, #131715 0%, #060706 100%);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #4c867a;
+          border-radius: 2px;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0"
+  }
+}
+</script>
+</head>
+<body class="alien-gradient">
+    <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
+</body>
+</html>
