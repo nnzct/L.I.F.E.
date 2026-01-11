@@ -2,11 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlanetData, Encounter } from "../types";
 
-/**
- * Gemini Service for L.I.F.E.
- * Handles generation of planets, sectors, and discovery points.
- */
-
+// Gemini API 초기화 (안전한 생성자 사용)
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
@@ -14,7 +10,6 @@ const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
  */
 const parseSafeJson = (text: string | undefined) => {
   if (!text) return null;
-  // Remove markdown code block syntax if present
   let cleanText = text.trim();
   if (cleanText.startsWith('```')) {
     cleanText = cleanText.replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
@@ -23,50 +18,55 @@ const parseSafeJson = (text: string | undefined) => {
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("JSON Parsing Error:", e);
-    console.error("Original Text:", text);
     return null;
   }
 };
 
-const planetSchema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING, description: "Name of the planet" },
-      code: { type: Type.STRING, description: "Scientific code like 'EXO-882'" },
-      description: { type: Type.STRING, description: "A brief atmospheric and geological summary" },
-      sectors: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING, description: "Name of the sector" },
-            description: { type: Type.STRING, description: "Description of the landscape" },
-            discoveryPoints: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  label: { type: Type.STRING, description: "Title of the discovery (e.g. 'Crystalline Spire')" },
-                  data: { type: Type.STRING, description: "Detailed scientific observation data" },
-                  iconType: { type: Type.STRING, enum: ['physics', 'geology', 'atmosphere', 'biology', 'energy', 'resource'] },
-                  x: { type: Type.NUMBER, description: "X coordinate (0-100)" },
-                  y: { type: Type.NUMBER, description: "Y coordinate (0-100)" },
-                },
-                required: ["id", "label", "data", "iconType", "x", "y"]
-              }
-            }
-          },
-          required: ["name", "description", "discoveryPoints"]
+// 행성 데이터 생성을 위한 루트 객체 스키마
+const planetResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    planets: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: "Name of the planet" },
+          code: { type: Type.STRING, description: "Scientific code like 'EXO-882'" },
+          description: { type: Type.STRING, description: "A brief atmospheric and geological summary" },
+          sectors: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING, description: "Name of the sector" },
+                description: { type: Type.STRING, description: "Description of the landscape" },
+                discoveryPoints: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      label: { type: Type.STRING, description: "Title of the discovery" },
+                      data: { type: Type.STRING, description: "Detailed scientific observation data in Korean" },
+                      iconType: { type: Type.STRING, enum: ['physics', 'geology', 'atmosphere', 'biology', 'energy', 'resource'] },
+                      x: { type: Type.NUMBER, description: "X coordinate (10-90)" },
+                      y: { type: Type.NUMBER, description: "Y coordinate (10-90)" },
+                    },
+                    required: ["label", "data", "iconType", "x", "y"]
+                  }
+                }
+              },
+              required: ["name", "description", "discoveryPoints"]
+            },
+            minItems: 5,
+            maxItems: 5
+          }
         },
-        minItems: 5,
-        maxItems: 5
+        required: ["name", "code", "description", "sectors"],
       }
-    },
-    required: ["name", "code", "description", "sectors"],
+    }
   },
+  required: ["planets"]
 };
 
 const encounterSchema = {
@@ -80,15 +80,15 @@ const encounterSchema = {
         type: Type.OBJECT,
         properties: {
           id: { type: Type.STRING },
-          message: { type: Type.STRING, description: "Non-verbal description of the encounter" },
+          message: { type: Type.STRING, description: "Non-verbal description in Korean" },
           choices: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
-                text: { type: Type.STRING, description: "The explorer's action" },
+                text: { type: Type.STRING },
                 nextStepId: { type: Type.STRING, nullable: true },
-                finalResponse: { type: Type.STRING, description: "The result of the action" }
+                finalResponse: { type: Type.STRING }
               },
               required: ["text", "nextStepId", "finalResponse"]
             }
@@ -102,7 +102,6 @@ const encounterSchema = {
 };
 
 function generateImage(seed: string): string {
-  // Using picsum as a placeholder for environmental images
   return `https://picsum.photos/seed/${seed}/1600/900`;
 }
 
@@ -111,7 +110,7 @@ export async function generateEncounterData(): Promise<Encounter | null> {
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: "Generate a mysterious encounter with an alien entity. It should be non-verbal (sounds, movements). Use Korean for the descriptions.",
+      contents: "외계 생명체와의 기괴한 비언어적 조우 시나리오를 생성하라. 한국어로 작성.",
       config: {
         responseMimeType: "application/json",
         responseSchema: encounterSchema,
@@ -128,7 +127,7 @@ export async function generateEncounterData(): Promise<Encounter | null> {
       isCompleted: false
     };
   } catch (error) {
-    console.error("Failed to generate encounter data:", error);
+    console.error("Encounter generation error:", error);
     return null;
   }
 }
@@ -136,49 +135,52 @@ export async function generateEncounterData(): Promise<Encounter | null> {
 export async function generateRandomPlanets(count: number): Promise<PlanetData[]> {
   try {
     const ai = getAI();
+    // 복잡한 생성 작업이므로 Pro 모델 사용 및 Thinking Budget 할당
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `[TASK: INTERSTELLAR EXPLORATION]
-Generate ${count} highly detailed and strange alien planets.
-RULES:
-1. Each planet must have EXACTLY 5 sectors.
-2. Each sector must have between 5 and 10 discovery points.
-3. Use specialized Korean scientific terminology for the descriptions.
-4. Discovery points should be scattered randomly (X and Y coordinates between 10 and 90).`,
+      model: "gemini-3-pro-preview",
+      contents: `[COSMIC ARCHITECT MODE]
+당신은 우주 탐사선 L.I.F.E.의 인공지능 탐사 분석기입니다. 
+인류가 거주 가능한지 또는 연구 가치가 있는지 판단하기 위해 ${count}개의 미개척 외계 행성을 정밀 스캔하십시오.
+- 각 행성은 고유한 생태적 테마를 가져야 합니다.
+- 묘사는 기괴하고, 경외감을 주며, 과학적이어야 합니다.
+- 한국어 전문 용어를 사용하십시오.`,
       config: {
         responseMimeType: "application/json",
-        responseSchema: planetSchema,
+        responseSchema: planetResponseSchema,
+        thinkingConfig: { thinkingBudget: 4000 }
       },
     });
 
-    const rawPlanets = parseSafeJson(response.text);
-    if (!rawPlanets || !Array.isArray(rawPlanets)) {
-      console.warn("Raw planets data is empty or invalid format.");
-      return [];
+    const parsed = parseSafeJson(response.text);
+    if (!parsed || !parsed.planets || !Array.isArray(parsed.planets)) {
+      throw new Error("Invalid Planet JSON structure");
     }
 
     const finalPlanets: PlanetData[] = [];
 
-    for (const p of rawPlanets) {
-      const sectors = (p.sectors || []).map((s: any, i: number) => ({
+    for (const p of parsed.planets) {
+      const sectors = p.sectors.map((s: any, i: number) => ({
         ...s,
-        id: `sector-${Math.random().toString(36).substring(2, 9)}`,
-        imageUrl: generateImage(`${p.code}-S${i}-${Date.now()}`),
-        encounter: undefined
+        id: `sector-${Math.random().toString(36).substring(2, 10)}`,
+        imageUrl: generateImage(`${p.code}-SEC-${i}-${Date.now()}`),
+        discoveryPoints: s.discoveryPoints.map((dp: any) => ({
+          ...dp,
+          id: `node-${Math.random().toString(36).substring(2, 10)}`
+        }))
       }));
 
       finalPlanets.push({
         ...p,
-        id: `planet-${Math.random().toString(36).substring(2, 9)}`,
+        id: `planet-${Math.random().toString(36).substring(2, 10)}`,
         isVisible: true,
-        timestamp: `STARDATE-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+        timestamp: `STARDATE-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${new Date().getFullYear()}`,
         sectors
       });
     }
 
     return finalPlanets;
   } catch (error) {
-    console.error("Critical error in generateRandomPlanets:", error);
+    console.error("Planet generation failed:", error);
     return [];
   }
 }
